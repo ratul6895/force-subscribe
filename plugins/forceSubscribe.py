@@ -4,7 +4,7 @@ from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ChatMemberStatus
 from pyrogram.errors import UserNotParticipant, FloodWait, InputUserDeactivated, UserIsBlocked, ChatAdminRequired
 from config import Config, Messages
-from database import get_channel, add_channel, dischannel, add_chat, get_chats_by_type
+from database.db import get_channel, add_channel, dischannel, add_chat, get_chats_by_type
 
 @Client.on_message(filters.command("start") & filters.private)
 async def start_cmd(bot: Client, message: Message):
