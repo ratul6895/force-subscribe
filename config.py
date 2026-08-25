@@ -1,31 +1,37 @@
 import os
 
-class Config(object):
-    BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-    API_ID = int(os.environ.get("API_ID", os.environ.get("APP_ID", 0)))
+class Config:
+    API_ID = int(os.environ.get("API_ID", "12345"))
     API_HASH = os.environ.get("API_HASH", "")
+    BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
     MONGO_DB_URI = os.environ.get("MONGO_DB_URI", "")
-    OWNER_ID = int(os.environ.get("OWNER_ID", 0))
-    PORT = int(os.environ.get("PORT", 8080))
-    
-    sudo_env = os.environ.get("SUDO_USERS", "")
-    SUDO_USERS = list(set(int(x) for x in sudo_env.split())) if sudo_env else []
-    if OWNER_ID:
-        SUDO_USERS.append(OWNER_ID)
-    SUDO_USERS.append(853393439)
-    SUDO_USERS = list(set(SUDO_USERS))
+    PORT = os.environ.get("PORT", "8080")
+    SUDO_USERS = [int(x) for x in os.environ.get("SUDO_USERS", "").split()]
 
-class Messages():
-    HELP_MSG = [
-        ".",
+class Messages:
+    START_MSG = """
+✨ **Welcome to Force Subscribe Bot!**
 
-        "[🔔](https://i.imgur.com/SmqQApH.jpg) **FORCE SUBSCRIBE (বাধ্যতামূলক সাবস্ক্রিপশন) :**\n\nগ্রুপে কোনো বার্তা বা মেসেজ পাঠানোর পূর্বে সদস্যদের একটি নির্দিষ্ট চ্যানেলে যুক্ত হতে বাধ্য করে।\nসদস্যরা চ্যানেলে যুক্ত না হলে তাদের পাঠানো বার্তা ডিলিট করা হবে এবং চ্যানেলে যুক্ত হওয়ার বার্তা ও বাটন দেখানো হবে।",
-        
-        "[⚙](https://i.imgur.com/ItAdRVF.jpg) **সেটআপ নির্দেশিকা :**\n\nপ্রথমেই আমাকে আপনার গ্রুপে **Admin** হিসেবে যুক্ত করুন (Delete Messages পারমিশনসহ) এবং সংশ্লিষ্ট চ্যানেলেও Admin বানান।\n● **নোট:** শুধুমাত্র গ্রুপের মালিক (Creator) বা অ্যাডমিনরা এটি সেটআপ করতে পারবেন।",
-        
-        "[⚙](https://i.imgur.com/LnOEiTK.jpg) **কমান্ডসমূহ :**\n\n/ForceSubscribe - বর্তমান সেটিংস দেখতে।\n/ForceSubscribe no/off/disable - ForceSubscribe বন্ধ করতে।\n/ForceSubscribe {Channel Username/Link} - নতুন চ্যানেল সেটআপ করতে।\n\n● **নোট:** `/FSub` বা `/fsub` হলো `/ForceSubscribe` কমান্ডের সংক্ষিপ্ত রূপ।",
-        
-        "[👨‍💻](https://telegra.ph/file/f2b08ba94ebd139d9da96.jpg) **ডেভেলপার ও সহায়তা**\n\nবট সংক্রান্ত যেকোনো সমস্যায় ওনারের সাথে যোগাযোগ করুন।"
-    ]
+Hello **{}** [<code>{}</code>] 👋
 
-    START_MSG = "**হ্যালো! [👋](https://i.imgur.com/SmqQApH.jpg) [{}](tg://user?id={})**\n\n● আমি আপনার গ্রুপের সদস্যদের নির্দিষ্ট চ্যানেলে যুক্ত হতে বাধ্য করতে পারি।\n● বিস্তারিত জানতে ক্লিক করুন 👉 /help"
+I am an advanced Force Subscribe management bot. I can force users to join your target channel before chatting in your group!
+
+⚡ **Features:**
+• Instant & Automatic Message Deletion
+• Clean & Interactive UI Buttons
+• Advanced Group Subscription Control
+"""
+
+    HELP_MSG = """
+📖 **Bot Command Guide & Instructions**
+
+<b>👤 User Commands:</b>
+└ <code>/start</code> - Check bot online status & main menu.
+
+<b>👥 Group Admin Commands:</b>
+└ <code>/fsub @YourChannel</code> - Connect channel for Force Subscribe.
+└ <code>/fsub off</code> - Disable Force Subscribe in the group.
+└ <code>/fsub</code> - Check currently configured channel.
+
+⚠️ *Note: Make sure to make the bot an Admin with delete permissions in your Group & Channel!*
+"""
