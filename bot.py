@@ -18,12 +18,13 @@ class Bot(Client):
         await super().start()
         print("Bot Started Successfully!")
         
-        # Web Server setup for Render
+        # Render Port Binding (Fixing No Open Ports Error)
         app = web.AppRunner(await web_server())
         await app.setup()
         port = int(Config.PORT)
         site = web.TCPSite(app, "0.0.0.0", port)
         await site.start()
+        print(f"Web Server running on port {port}")
 
     async def stop(self, *args):
         await super().stop()
@@ -31,16 +32,4 @@ class Bot(Client):
 
 if __name__ == "__main__":
     bot = Bot()
-    
-    # Simple web server runner along with Pyrogram bot
-    async def run_bot():
-        await bot.start()
-        await asyncio.Event().wait()
-
-    loop = asyncio.get_event_loop()
-    try:
-        loop.run_until_complete(run_bot())
-    except (KeyboardInterrupt, SystemExit):
-        pass
-    finally:
-        loop.run_until_complete(bot.stop())
+    bot.run()
