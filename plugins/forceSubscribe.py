@@ -30,7 +30,7 @@ Thanks for adding me here! I am your **Force Subscribe Manager**.
 
 ⚙️ **Quick Setup Guide:**
 1️⃣ Make me an **Admin** with delete permissions in this group.
-2. Add me as an **Admin** in your target channel.
+2️⃣ Add me as an **Admin** in your target channel.
 3️⃣ Send the command below in this group to activate:
 
 👉 **Example:** <code>/fsub @YourChannelUsername</code>
@@ -116,7 +116,7 @@ async def set_fsub(bot: Client, message: Message):
         f"🔒 *Unsubscribed members will be restricted from messaging.*"
     )
 
-# 5. Group Message Listener (Instant Delete & Restriction)
+# 5. Group Message Listener (Instant Delete & Dynamic Single Warning Message)
 @Client.on_message(filters.group & ~filters.bot, group=-1)
 async def check_subscription(bot: Client, message: Message):
     await add_chat(message.chat.id, "group")
@@ -139,11 +139,22 @@ async def check_subscription(bot: Client, message: Message):
         if user.status == ChatMemberStatus.BANNED:
             await message.delete()
     except UserNotParticipant:
-        # Instant Message Deletion
+        # Instant User Message Deletion
         try:
             await message.delete()
         except Exception:
             pass
+
+        # Global Warning Message Tracker Setup
+        if not hasattr(bot, "last_warnings"):
+            bot.last_warnings = {}
+
+        # Delete previous warning message in this group if it exists
+        if message.chat.id in bot.last_warnings:
+            try:
+                await bot.last_warnings[message.chat.id].delete()
+            except Exception:
+                pass
 
         bot_obj = await bot.get_me()
         channel_url = channel if channel.startswith("http") else f"https://t.me/{clean_channel}"
@@ -153,15 +164,16 @@ async def check_subscription(bot: Client, message: Message):
             [InlineKeyboardButton("➕ Add Me to Your Group", url=f"https://t.me/{bot_obj.username}?startgroup=true")]
         ])
 
-        warn_msg = await message.reply_text(
-            f"🚫 <b>{message.from_user.mention}</b>, you must join our official channel to send messages here!",
-            reply_markup=markup
-        )
-        await asyncio.sleep(8)
+        # Send new warning message & save reference
         try:
-            await warn_msg.delete()
-        except Exception:
-            pass
+            warn_msg = await message.reply_text(
+                f"🚫 <b>{message.from_user.mention}</b>, you must join our official channel to send messages here!",
+                reply_markup=markup
+            )
+            bot.last_warnings[message.chat.id] = warn_msg
+        except Exception as e:
+            print(f"Error sending warning: {e}")
+            
     except Exception as e:
         print(f"Error: {e}")
 
