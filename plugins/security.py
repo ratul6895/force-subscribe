@@ -1,11 +1,9 @@
 import asyncio
 import re
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
+from pyrogram.types import Message, ChatPermissions
 from pyrogram.enums import ChatMemberStatus
 from config import Config
-
-OFFICIAL_CHANNEL = "https://t.me/official_botbox"
 
 # 1. Regex Patterns for Links and Usernames
 URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+|\b[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b)")
@@ -68,8 +66,6 @@ async def group_security_handler(bot: Client, message: Message):
         except Exception:
             pass
 
-    bot_obj = await bot.get_me()
-
     # ACTION: If warnings reach 3, MUTE the user for 24 Hours
     if current_warns >= 3:
         try:
@@ -82,18 +78,13 @@ async def group_security_handler(bot: Client, message: Message):
             )
             bot.user_warnings[user_key] = 0 # Reset warnings
             
-            action_markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("📢 Official Channel", url=OFFICIAL_CHANNEL)]
-            ])
-            
             action_msg = await bot.send_message(
                 chat_id=chat_id,
                 text=(
                     f"🚫 <b>{message.from_user.mention} has been MUTED for 24 hours!</b>\n\n"
-                    f"⚠️ <b>Reason:</b> Reached 3/3 Security Warnings.\n"
-                    f"📢 <b>Updates & Support:</b> @official_botbox"
+                    f"⚠️ <b>Reason:</b> Reached 3/3 Security Warnings.\n\n"
+                    f"📢 <b>Powered by:</b> @official_botbox"
                 ),
-                reply_markup=action_markup,
                 disable_web_page_preview=True
             )
             bot.sec_last_warnings[chat_id] = action_msg
@@ -101,14 +92,7 @@ async def group_security_handler(bot: Client, message: Message):
         except Exception as e:
             print(f"Error muting user: {e}")
 
-    # WARNING MESSAGE: 1/3 or 2/3
-    warn_markup = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📢 Official Channel", url=OFFICIAL_CHANNEL),
-            InlineKeyboardButton("➕ Add Me to Group", url=f"https://t.me/{bot_obj.username}?startgroup=true")
-        ]
-    ])
-
+    # WARNING MESSAGE: 1/3 or 2/3 (Text only, no buttons)
     warn_text = (
         f"⚠️ <b>Security Alert for {message.from_user.mention}!</b>\n\n"
         f"🛑 <b>Rule Broken:</b> {violation_reason}\n"
@@ -121,7 +105,6 @@ async def group_security_handler(bot: Client, message: Message):
         sent_warn = await bot.send_message(
             chat_id=chat_id,
             text=warn_text,
-            reply_markup=warn_markup,
             disable_web_page_preview=True
         )
         bot.sec_last_warnings[chat_id] = sent_warn
