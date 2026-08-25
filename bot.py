@@ -1,5 +1,5 @@
 import asyncio
-from pyrogram import Client
+from pyrogram import Client, idle
 from config import Config
 from web import web_server
 from aiohttp import web
@@ -25,6 +25,9 @@ class Bot(Client):
         site = web.TCPSite(app, "0.0.0.0", port)
         await site.start()
         print(f"Web Server running on port {port}")
+        
+        # Keep the bot running continuously on Render
+        await idle()
 
     async def stop(self, *args):
         await super().stop()
