@@ -1,3 +1,4 @@
+import asyncio
 from pyrogram import Client
 from config import Config
 from web import web_server
@@ -17,10 +18,11 @@ class Bot(Client):
         await super().start()
         print("Bot Started Successfully!")
         
-        # Render Free Web Service Support
+        # Render Free Web Service Port Binding
         app = web.AppRunner(await web_server())
         await app.setup()
-        site = web.TCPSite(app, "0.0.0.0", Config.PORT if hasattr(Config, 'PORT') else 8080)
+        port = int(Config.PORT)
+        site = web.TCPSite(app, "0.0.0.0", port)
         await site.start()
 
     async def stop(self, *args):
