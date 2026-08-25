@@ -1,82 +1,91 @@
 import asyncio
-import re
 from pyrogram import Client, filters
 from pyrogram.types import Message, ChatPermissions
-from pyrogram.enums import ChatMemberStatus
 from config import Config
+from database.db import get_security_settings, update_security_settings
 
-# 1. Regex Patterns for Links and Usernames
-URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+|\b[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b)")
-USERNAME_PATTERN = re.compile(r"(@[a-zA-Z0-9_]{4,})|(t\.me/[a-zA-Z0-9_]{4,})")
-
+# Group Security & Anti-Spam Listener
 @Client.on_message(filters.group & ~filters.bot, group=2)
-async def group_security_handler(bot: Client, message: Message):
-    if not message.from_user:
-        return
-
+async def security_check_handler(bot: Client, message: Message):
     chat_id = message.chat.id
     user_id = message.from_user.id
 
-    # Exclude Group Admins, Owners, and Sudo Users
+    # Exclude Group Admins and Sudo Users
     try:
         member = await bot.get_chat_member(chat_id, user_id)
-        if member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR] or user_id in Config.SUDO_USERS:
+        if member.status in ["owner", "administrator"] or user_id in Config.SUDO_USERS:
             return
     except Exception:
         pass
 
-    violation_reason = None
+    # Fetch group security settings from Database
+    settings = await get_security_settings(chat_id)
+    
+    # DEFAULT STATE: All protections are OFF (False) by default unless explicitly enabled
+    link_protection = settings.get("link_protection", False) if settings else False
+    forward_protection = settings.get("forward_protection", False) if settings else False
+    username_protection = settings.get("username_protection", False) if settings else False
 
-    # Check 1: Anti-Forward
-    if message.forward_date or message.forward_from or message.forward_from_chat:
-        violation_reason = "Forwarding messages from other chats is not allowed!"
+    is_violation = False
+    violation_reason = ""
 
-    # Check 2: Anti-Link / Anti-URL
-    elif message.text and URL_PATTERN.search(message.text):
-        violation_reason = "Sending external links/URLs is strictly prohibited!"
+    # Check Link Protection (If Enabled by Admin)
+    if link_protection and (message.entities or message.caption_entities):
+        entities = message.entities or message.caption_entities
+        for entity in entities:
+            if entity.type in ["url", "text_link"]:
+                is_violation = True
+                violation_reason = "Sending Links is Restricted!"
+                break
 
-    # Check 3: Anti-Username / Mentions
-    elif message.text and USERNAME_PATTERN.search(message.text):
-        violation_reason = "Sharing @usernames or Telegram channels is not allowed!"
+    # Check Forward Message Protection (If Enabled by Admin)
+    if not is_violation and forward_protection and message.forward_date:
+        is_violation = True
+        violation_reason = "Forwarded Messages are Restricted!"
 
-    # If no violation found, pass
-    if not violation_reason:
+    # Check Username Protection (If Enabled by Admin)
+    if not is_violation and username_protection and message.text:
+        if "@" in message.text:
+            is_violation = True
+            violation_reason = "Telegram Usernames (@) are Restricted!"
+
+    # If no rules are broken or all features are OFF, continue
+    if not is_violation:
         return
 
-    # Delete the offending message immediately
+    # Delete violating message instantly
     try:
         await message.delete()
     except Exception:
         pass
 
-    # Initialize Memory Trackers inside bot instance
+    # Warning Counter & Mute Logic (Remains 100% Intact)
     if not hasattr(bot, "user_warnings"):
         bot.user_warnings = {}
-    if not hasattr(bot, "sec_last_warnings"):
-        bot.sec_last_warnings = {}
 
     user_key = f"{chat_id}_{user_id}"
     current_warns = bot.user_warnings.get(user_key, 0) + 1
     bot.user_warnings[user_key] = current_warns
 
-    # Delete previous security warning message in this group if exists
-    if chat_id in bot.sec_last_warnings:
+    if not hasattr(bot, "sec_last_warnings"):
+        bot.sec_last_warnings = {}
+
+    old_warn = bot.sec_last_warnings.get(chat_id)
+    if old_warn:
         try:
-            await bot.sec_last_warnings[chat_id].delete()
+            await old_warn.delete()
         except Exception:
             pass
 
-    # ACTION: If warnings reach 3, MUTE the user for 24 Hours
     if current_warns >= 3:
         try:
-            # Mute user for 24 hours (86400 seconds)
             await bot.restrict_chat_member(
                 chat_id=chat_id,
                 user_id=user_id,
                 permissions=ChatPermissions(can_send_messages=False),
                 until_date=int(asyncio.get_event_loop().time() + 86400)
             )
-            bot.user_warnings[user_key] = 0 # Reset warnings
+            bot.user_warnings[user_key] = 0
             
             action_msg = await bot.send_message(
                 chat_id=chat_id,
@@ -92,7 +101,6 @@ async def group_security_handler(bot: Client, message: Message):
         except Exception as e:
             print(f"Error muting user: {e}")
 
-    # WARNING MESSAGE: 1/3 or 2/3 (Text only, no buttons)
     warn_text = (
         f"⚠️ <b>Security Alert for {message.from_user.mention}!</b>\n\n"
         f"🛑 <b>Rule Broken:</b> {violation_reason}\n"
