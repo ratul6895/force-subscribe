@@ -206,3 +206,33 @@ async def safe_broadcast(bot: Client, message: Message):
             failed += 1
 
     await status.edit_text(f"✅ **Broadcast Task Completed!**\n\n🎯 **Target:** `{target}`\n🟢 **Success:** `{sent}`\n🔴 **Failed:** `{failed}`")
+
+# 7. Live Statistics Command for Sudos / Owner
+@Client.on_message(filters.command(["stats", "status"]) & filters.user(Config.SUDO_USERS))
+async def bot_stats(bot: Client, message: Message):
+    status_msg = await message.reply_text("⚡ **Fetching Bot Statistics...**")
+    
+    try:
+        total_users = await get_chats_by_type("user")
+        total_groups = await get_chats_by_type("group")
+        
+        user_count = len(total_users) if total_users else 0
+        group_count = len(total_groups) if total_groups else 0
+        
+        stats_text = (
+            "📊 <b>Official Bot Box - Live Statistics</b>\n\n"
+            f"👤 <b>Total Users (Bot Started):</b> <code>{user_count}</code>\n"
+            f"👥 <b>Total Groups Connected:</b> <code>{group_count}</code>\n"
+            f"🌐 <b>Total Active Reach:</b> <code>{user_count + group_count}</code>\n\n"
+            "📢 <b>Powered by:</b> @official_botbox"
+        )
+        
+        await status_msg.edit_text(stats_text, disable_web_page_preview=True)
+    except Exception as e:
+        await status_msg.edit_text(f"❌ **Error fetching stats:** `{e}`")
+
+# 8. Dynamic Extension Pass-Through (Modular Gateway for Future Plugins)
+# This dummy listener ensures Pyrogram automatically allows external command files in plugins/ without affecting FSub priority.
+@Client.on_message(filters.group & filters.command(["ping", "extra"]), group=0)
+async def extension_gateway_pass(bot: Client, message: Message):
+    message.continue_propagation()
