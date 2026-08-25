@@ -1,5 +1,7 @@
 from pyrogram import Client
 from config import Config
+from web import web_server
+from aiohttp import web
 
 class Bot(Client):
     def __init__(self):
@@ -14,6 +16,12 @@ class Bot(Client):
     async def start(self):
         await super().start()
         print("Bot Started Successfully!")
+        
+        # Render Free Web Service Support
+        app = web.AppRunner(await web_server())
+        await app.setup()
+        site = web.TCPSite(app, "0.0.0.0", Config.PORT if hasattr(Config, 'PORT') else 8080)
+        await site.start()
 
     async def stop(self, *args):
         await super().stop()
