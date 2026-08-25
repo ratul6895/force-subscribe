@@ -1,126 +1,104 @@
-import time
-import logging
-from config import Config
+import asyncio
 from pyrogram import Client, filters
-from sql_helpers import forceSubscribe_sql as sql
-from pyrogram.types import ChatPermissions, InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.errors.exceptions.bad_request_400 import UserNotParticipant, UsernameNotOccupied, ChatAdminRequired, PeerIdInvalid
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.enums import ChatMemberStatus
+from pyrogram.errors import UserNotParticipant, FloodWait, InputUserDeactivated, UserIsBlocked, ChatAdminRequired
+from config import Config, Messages
+from database import get_channel, add_channel, dischannel, add_chat, get_chats_by_type
 
-logging.basicConfig(level=logging.INFO)
+@Client.on_message(filters.command("start") & filters.private)
+async def start_cmd(bot: Client, message: Message):
+    await add_chat(message.from_user.id, "user")
+    text = Messages.START_MSG.format(message.from_user.first_name, message.from_user.id)
+    await message.reply_text(text, disable_web_page_preview=False)
 
-static_data_filter = filters.create(lambda _, __, query: query.data == "onUnMuteRequest")
-@Client.on_callback_query(static_data_filter)
-def _onUnMuteRequest(client, cb):
-  user_id = cb.from_user.id
-  chat_id = cb.message.chat.id
-  chat_db = sql.fs_settings(chat_id)
-  if chat_db:
-    channel = chat_db.channel
-    chat_member = client.get_chat_member(chat_id, user_id)
-    if chat_member.restricted_by:
-      if chat_member.restricted_by.id == (client.get_me()).id:
-          try:
-            client.get_chat_member(channel, user_id)
-            client.unban_chat_member(chat_id, user_id)
-            if cb.message.reply_to_message.from_user.id == user_id:
-              cb.message.delete()
-          except UserNotParticipant:
-            client.answer_callback_query(cb.id, text="❗ Join the mentioned 'channel' and press the 'UnMute Me' button again.", show_alert=True)
-      else:
-        client.answer_callback_query(cb.id, text="❗ You are muted by admins for other reasons.", show_alert=True)
-    else:
-      if not client.get_chat_member(chat_id, (client.get_me()).id).status == 'administrator':
-        client.send_message(chat_id, f"❗ **{cb.from_user.mention} is trying to UnMute himself but i can't unmute him because i am not an admin in this chat add me as admin again.**\n__#Leaving this chat...__")
-        client.leave_chat(chat_id)
-      else:
-        client.answer_callback_query(cb.id, text="❗ Warning: Don't click the button if you can speak freely.", show_alert=True)
+@Client.on_message(filters.command(["forcesubscribe", "fsub"]) & filters.group)
+async def set_fsub(bot: Client, message: Message):
+    await add_chat(message.chat.id, "group")
+    member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+    if member.status not in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR] and message.from_user.id not in Config.SUDO_USERS:
+        return await message.reply_text("❌ এই কমান্ডটি শুধু গ্রুপের অ্যাডমিনদের জন্য।")
 
+    if len(message.command) < 2:
+        curr_chan = await get_channel(message.chat.id)
+        if curr_chan:
+            return await message.reply_text(f"📢 বর্তমান সেটআপ করা চ্যানেল: {curr_chan}")
+        return await message.reply_text("⚠️ ব্যবহার পদ্ধতি:\n`/fsub @YourChannel` অথবা `/fsub off` (বন্ধ করার জন্য)")
 
+    arg = message.command[1].lower()
+    if arg in ["no", "off", "disable"]:
+        await dischannel(message.chat.id)
+        return await message.reply_text("✅ Force Subscribe ফিচারটি বন্ধ করা হয়েছে।")
 
-@Client.on_message(filters.text & ~filters.private & ~filters.edited, group=1)
-def _check_member(client, message):
-  chat_id = message.chat.id
-  chat_db = sql.fs_settings(chat_id)
-  if chat_db:
-    user_id = message.from_user.id
-    if not client.get_chat_member(chat_id, user_id).status in ("administrator", "creator") and not user_id in Config.SUDO_USERS:
-      channel = chat_db.channel
-      if channel.startswith("-"):
-          url = client.export_chat_invite_link(int(channel))
-      else:
-          url = f"https://t.me/{channel}"
-      try:
-        client.get_chat_member(channel, user_id)
-      except UserNotParticipant:
+    channel = message.command[1]
+    await add_channel(message.chat.id, channel)
+    await message.reply_text(f"✅ সফলভাবে চ্যানেল যুক্ত হয়েছে!\nচ্যানেল: {channel}")
+
+@Client.on_message(filters.group & ~filters.bot, group=-1)
+async def check_subscription(bot: Client, message: Message):
+    await add_chat(message.chat.id, "group")
+    channel = await get_channel(message.chat.id)
+    if not channel:
+        return
+
+    try:
+        member = await bot.get_chat_member(message.chat.id, message.from_user.id)
+        if member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR] or message.from_user.id in Config.SUDO_USERS:
+            return
+    except:
+        pass
+
+    try:
+        clean_channel = channel.replace("https://t.me/", "").replace("@", "")
+        user = await bot.get_chat_member(clean_channel, message.from_user.id)
+        if user.status == ChatMemberStatus.BANNED:
+            await message.delete()
+    except UserNotParticipant:
         try:
-          sent_message = message.reply_text(
-              f"Hi {message.from_user.mention}, You Are **Not Subscribed** To My [Channel]({url}) Yet. Please 👉 [Join]({url}) And **Press The Button Below** 👇 To Unmute Yourself..",
-              disable_web_page_preview=True,
-              reply_markup=InlineKeyboardMarkup(
-             [
-                 [
-                     InlineKeyboardButton("💬 Subscribe", url=url)
-                 ],
-                 [
-                     InlineKeyboardButton("🔕 UnMute Me", callback_data="onUnMuteRequest")
-                 ]
-             ]
-         )
-           )
-          client.restrict_chat_member(chat_id, user_id, ChatPermissions(can_send_messages=False))
-        except ChatAdminRequired:
-          sent_message.edit("❗ **I am not an admin here.**\n__Make me admin with ban user permission and add me again.\n#Leaving this chat...__")
-          client.leave_chat(chat_id)
-      except ChatAdminRequired:
-        client.send_message(chat_id, text=f"❗ **I am not an admin in [channel]({url})**\n__Make me admin in the channel and add me again.\n#Leaving this chat...__")
-        client.leave_chat(chat_id)
+            await message.delete()
+        except Exception:
+            pass
 
+        channel_url = channel if channel.startswith("http") else f"https://t.me/{clean_channel}"
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("📢 চ্যানেলে যুক্ত হন", url=channel_url)]])
+        
+        warn_msg = await message.reply_text(
+            f"⚠️ **{message.from_user.mention}**, আপনি আমাদের চ্যানেলে যুক্ত না হওয়া পর্যন্ত এই গ্রুপে মেসেজ পাঠাতে পারবেন না!",
+            reply_markup=markup
+        )
+        await asyncio.sleep(10)
+        try:
+            await warn_msg.delete()
+        except:
+            pass
+    except Exception as e:
+        print(f"Error: {e}")
 
-@Client.on_message(filters.command(["forcesubscribe", "fsub"]) & ~filters.private)
-def fsub(client, message):
-  user = client.get_chat_member(message.chat.id, message.from_user.id)
-  if user.status is "creator" or user.user.id in Config.SUDO_USERS:
-    chat_id = message.chat.id
-    if len(message.command) > 1:
-      input_str = message.command[1]
-      input_str = input_str.replace("@", "")
-      if input_str.lower() in ("off", "no", "disable"):
-        sql.disapprove(chat_id)
-        message.reply_text("❌ **Force Subscribe is Disabled Successfully.**")
-      elif input_str.lower() in ('clear'):
-        sent_message = message.reply_text('**Unmuting all members who are muted by me...**')
+@Client.on_message(filters.command("broadcast") & filters.user(Config.SUDO_USERS))
+async def safe_broadcast(bot: Client, message: Message):
+    if not message.reply_to_message:
+        return await message.reply_text("⚠️ যেকোনো মেসেজের রিপ্লাইয়ে `/broadcast user` অথবা `/broadcast group` লিখুন।")
+
+    target = message.command[1] if len(message.command) > 1 else "user"
+    if target not in ["user", "group"]:
+        return await message.reply_text("⚠️ ব্যবহার পদ্ধতি: `/broadcast user` অথবা `/broadcast group`")
+
+    targets = await get_chats_by_type(target)
+    sent, failed = 0, 0
+    status = await message.reply_text(f"📢 **{target.capitalize()}** ব্রডকাস্ট শুরু হয়েছে...")
+
+    for cid in targets:
         try:
-          for chat_member in client.get_chat_members(message.chat.id, filter="restricted"):
-            if chat_member.restricted_by.id == (client.get_me()).id:
-                client.unban_chat_member(chat_id, chat_member.user.id)
-                time.sleep(1)
-          sent_message.edit('✅ **UnMuted all members who are muted by me.**')
-        except ChatAdminRequired:
-          sent_message.edit('❗ **I am not an admin in this chat.**\n__I can\'t unmute members because i am not an admin in this chat make me admin with ban user permission.__')
-      else:
-        try:
-          client.get_chat_member(input_str, "me")
-          sql.add_channel(chat_id, input_str)
-          if input_str.startswith("-"):
-              url = client.export_chat_invite_link(int(input_str))
-          else:
-              url = f"https://t.me/{input_str}"
-          message.reply_text(f"✅ **Force Subscribe is Enabled**\n__Force Subscribe is enabled, all the group members have to subscribe this [channel]({url}) in order to send messages in this group.__", disable_web_page_preview=True)
-        except UserNotParticipant:
-          message.reply_text(f"❗ **Not an Admin in the Channel**\n__I am not an admin in the [channel]({url}). Add me as a admin in order to enable ForceSubscribe.__", disable_web_page_preview=True)
-        except (UsernameNotOccupied, PeerIdInvalid):
-          message.reply_text(f"❗ **Invalid Channel Username/ID.**")
-        except Exception as err:
-          message.reply_text(f"❗ **ERROR:** ```{err}```")
-    else:
-      if sql.fs_settings(chat_id):
-        my_channel = sql.fs_settings(chat_id).channel
-        if my_channel.startswith("-"):
-            url = client.export_chat_invite_link(int(input_str))
-        else:
-            url = f"https://t.me/{my_channel}"
-        message.reply_text(f"✅ **Force Subscribe is enabled in this chat.**\n__For this [Channel]({url})__", disable_web_page_preview=True)
-      else:
-        message.reply_text("❌ **Force Subscribe is disabled in this chat.**")
-  else:
-      message.reply_text("❗ **Group Creator Required**\n__You have to be the group creator to do that.__")
+            await message.reply_to_message.copy(cid)
+            sent += 1
+            await asyncio.sleep(0.1)
+        except FloodWait as e:
+            await asyncio.sleep(e.value + 1)
+            await message.reply_to_message.copy(cid)
+            sent += 1
+        except (InputUserDeactivated, UserIsBlocked, ChatAdminRequired):
+            failed += 1
+        except Exception:
+            failed += 1
+
+    await status.edit_text(f"✅ **ব্রডকাস্ট সম্পন্ন!**\n\nগন্তব্য: {target}\nসফল: {sent}\nব্যর্থ: {failed}")
