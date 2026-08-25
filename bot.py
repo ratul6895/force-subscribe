@@ -29,5 +29,10 @@ class Bot(Client):
         await super().stop()
         print("Bot Stopped.")
 
+async def main():
+    bot = Bot()
+    await bot.start()
+    await asyncio.Event().wait()
+
 if __name__ == "__main__":
-    Bot().run()
+    asyncio.run(main())
