@@ -18,7 +18,7 @@ class Bot(Client):
         await super().start()
         print("Bot Started Successfully!")
         
-        # Render Free Web Service Port Binding
+        # Web Server setup for Render
         app = web.AppRunner(await web_server())
         await app.setup()
         port = int(Config.PORT)
@@ -29,10 +29,18 @@ class Bot(Client):
         await super().stop()
         print("Bot Stopped.")
 
-async def main():
-    bot = Bot()
-    await bot.start()
-    await asyncio.Event().wait()
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    bot = Bot()
+    
+    # Simple web server runner along with Pyrogram bot
+    async def run_bot():
+        await bot.start()
+        await asyncio.Event().wait()
+
+    loop = asyncio.get_event_loop()
+    try:
+        loop.run_until_complete(run_bot())
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        loop.run_until_complete(bot.stop())
