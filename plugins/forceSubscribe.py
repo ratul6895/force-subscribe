@@ -1,238 +1,128 @@
-import asyncio
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.enums import ChatMemberStatus, ChatType
-from pyrogram.errors import UserNotParticipant, FloodWait, InputUserDeactivated, UserIsBlocked, ChatAdminRequired
-from config import Config, Messages
-from database.db import get_channel, add_channel, dischannel, add_chat, get_chats_by_type
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.enums import ChatMemberStatus
+from pyrogram.errors import UserNotParticipant, ChatAdminRequired, PeerIdInvalid
+from database.db import db
 
-OFFICIAL_CHANNEL = "https://t.me/official_botbox"
+async def is_admin(client: Client, chat_id: int, user_id: int) -> bool:
+    """ইউজার গ্রুপের অ্যাডমিন বা ওনার কিনা চেক করে"""
+    try:
+        member = await client.get_chat_member(chat_id, user_id)
+        return member.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]
+    except Exception:
+        return False
 
-# 1. Automatic Message when Bot is Added to a New Group
-@Client.on_message(filters.new_chat_members)
-async def bot_added_to_group(bot: Client, message: Message):
-    bot_obj = await bot.get_me()
-    for member in message.new_chat_members:
-        if member.id == bot_obj.id:
-            await add_chat(message.chat.id, "group")
-            
-            keyboard = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("📢 Official Channel", url=OFFICIAL_CHANNEL),
-                    InlineKeyboardButton("📖 Commands Guide", callback_data="help_cmd")
-                ]
-            ])
-            
-            welcome_text = f"""
-✨ **Hello Everyone in {message.chat.title}!** 👋
+# ------------------ FSUB SET COMMAND ------------------ #
+@Client.on_message(filters.command("fsub") & filters.group)
+async def fsub_command(client: Client, message: Message):
+    if not await is_admin(client, message.chat.id, message.from_user.id):
+        return await message.reply_text("❌ <b>শুধুমাত্র গ্রুপের অ্যাডমিনগণ এই কমান্ডটি ব্যবহার করতে পারবেন!</b>")
 
-Thanks for adding me here! I am your **Force Subscribe Manager**.
+    args = message.text.split()
 
-⚙️ **Quick Setup Guide:**
-1️⃣ Make me an **Admin** with delete permissions in this group.
-2️⃣ Add me as an **Admin** in your target channel.
-3️⃣ Send the command below in this group to activate:
+    # ১. বর্তমান FSub স্ট্যাটাস দেখা
+    if len(args) == 1:
+        channel = await db.get_fsub(message.chat.id)
+        if channel:
+            return await message.reply_text(f"📢 <b>বর্তমান ফোর্স সাবস্ক্রাইব চ্যানেল:</b> @{channel}\n\n💡 বন্ধ করতে টাইপ করুন: <code>/fsub off</code>")
+        else:
+            return await message.reply_text("❌ <b>এই গ্রুপে বর্তমানে কোনো ফোর্স সাবস্ক্রাইব চ্যানেল যুক্ত নেই!</b>\n\n💡 চ্যানেল যুক্ত করতে টাইপ করুন: <code>/fsub @YourChannel</code>")
 
-👉 **Example:** <code>/fsub @YourChannelUsername</code>
-💡 **Disable FSub:** <code>/fsub off</code>
+    input_channel = args[1].strip()
 
-Need more help? Click the button below! 🚀
-"""
-            await message.reply_text(welcome_text, reply_markup=keyboard, disable_web_page_preview=True)
+    # ২. FSub অফ করা
+    if input_channel.lower() == "off":
+        await db.del_fsub(message.chat.id)
+        return await message.reply_text("✅ <b>ফোর্স সাবস্ক্রাইব সফলভাবে বন্ধ করা হয়েছে!</b>")
 
-# 2. Private Start Command
-@Client.on_message(filters.command("start") & filters.private)
-async def start_cmd(bot: Client, message: Message):
-    await add_chat(message.from_user.id, "user")
-    bot_obj = await bot.get_me()
-    
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("➕ Add Me to Your Group", url=f"https://t.me/{bot_obj.username}?startgroup=true")
-        ],
-        [
-            InlineKeyboardButton("📢 Official Channel", url=OFFICIAL_CHANNEL),
-            InlineKeyboardButton("📖 Help & Commands", callback_data="help_cmd")
-        ]
-    ])
-    text = Messages.START_MSG.format(message.from_user.first_name, message.from_user.id)
-    await message.reply_text(text, reply_markup=keyboard, disable_web_page_preview=True)
+    # ৩. চ্যানেল ইউজারনেম ফিল্টারিং ও ভ্যালিডেশন
+    clean_channel = input_channel.replace("https://t.me/", "").replace("http://t.me/", "").replace("@", "").split("/")[0]
 
-# 3. Callback Handlers
-@Client.on_callback_query(filters.regex("help_cmd"))
-async def help_callback(bot: Client, query):
-    bot_obj = await bot.get_me()
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🔙 Back to Home", callback_data="home_cmd"),
-            InlineKeyboardButton("➕ Add to Group", url=f"https://t.me/{bot_obj.username}?startgroup=true")
-        ]
-    ])
-    await query.message.edit_text(Messages.HELP_MSG, reply_markup=keyboard, disable_web_page_preview=True)
+    try:
+        chat_member = await client.get_chat_member(f"@{clean_channel}", "me")
+        if chat_member.status != ChatMemberStatus.ADMINISTRATOR:
+            return await message.reply_text(f"⚠️ <b>বটটি @{clean_channel} চ্যানেলে অ্যাডমিন নয়!</b>\n\nঅনুগ্রহ করে প্রথমে বটকে ওই চ্যানেলে অ্যাডমিন বানান।")
+    except Exception as e:
+        return await message.reply_text(f"❌ <b>চ্যানেল যাচাই করতে ব্যর্থ হয়েছে!</b>\n\nইনপুট করা ইউজারনেম সঠিক কিনা চেক করুন: <code>@{clean_channel}</code>")
 
-@Client.on_callback_query(filters.regex("home_cmd"))
-async def home_callback(bot: Client, query):
-    bot_obj = await bot.get_me()
-    keyboard = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("➕ Add Me to Your Group", url=f"https://t.me/{bot_obj.username}?startgroup=true")
-        ],
-        [
-            InlineKeyboardButton("📢 Official Channel", url=OFFICIAL_CHANNEL),
-            InlineKeyboardButton("📖 Help & Commands", callback_data="help_cmd")
-        ]
-    ])
-    text = Messages.START_MSG.format(query.from_user.first_name, query.from_user.id)
-    await query.message.edit_text(text, reply_markup=keyboard, disable_web_page_preview=True)
+    # ডাটাবেজে সেভ
+    await db.set_fsub(message.chat.id, clean_channel)
+    await message.reply_text(f"🎉 <b>সফলভাবে ফোর্স সাবস্ক্রাইব চ্যানেল সেট করা হয়েছে!</b>\n\n📢 <b>চ্যানেল:</b> @{clean_channel}")
 
-# 4. Group Force Subscribe Setup Command
-@Client.on_message(filters.command(["forcesubscribe", "fsub"]) & filters.group)
-async def set_fsub(bot: Client, message: Message):
-    await add_chat(message.chat.id, "group")
-    member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-    if member.status not in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR] and message.from_user.id not in Config.SUDO_USERS:
-        return await message.reply_text("❌ **Access Denied:** This command is restricted to Group Admins only!")
 
-    if len(message.command) < 2:
-        curr_chan = await get_channel(message.chat.id)
-        if curr_chan:
-            return await message.reply_text(f"📢 **Current Connected Channel:** `{curr_chan}`")
-        return await message.reply_text(
-            "⚠️ **Incorrect Usage!**\n\n"
-            "👉 **To Setup Channel:** `/fsub @YourChannel`\n"
-            "👉 **To Turn Off FSub:** `/fsub off`"
-        )
-
-    arg = message.command[1].lower()
-    if arg in ["no", "off", "disable"]:
-        await dischannel(message.chat.id)
-        return await message.reply_text("✅ **Force Subscribe Service has been Disabled for this Group.**")
-
-    channel = message.command[1]
-    await add_channel(message.chat.id, channel)
-    await message.reply_text(
-        f"🎯 **Force Subscribe Activated Successfully!**\n\n"
-        f"📢 **Target Channel:** `{channel}`\n"
-        f"🔒 *Unsubscribed members will be restricted from messaging.*"
-    )
-
-# 5. Group Message Listener (Instant Delete & Dynamic Single Warning Message)
-@Client.on_message(filters.group & ~filters.bot, group=-1)
-async def check_subscription(bot: Client, message: Message):
-    await add_chat(message.chat.id, "group")
-    channel = await get_channel(message.chat.id)
-    if not channel:
+# ------------------ FSUB CHECKER HANDLER ------------------ #
+@Client.on_message(filters.group & ~filters.service, group=2)
+async def fsub_message_handler(client: Client, message: Message):
+    if not message.from_user or message.from_user.is_bot:
         return
 
-    # Exclude Group Admins and Sudo Users
-    try:
-        member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-        if member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR] or message.from_user.id in Config.SUDO_USERS:
-            return
-    except Exception:
-        pass
+    # অ্যাডমিনদের জন্য FSub শিথিলযোগ্য
+    if await is_admin(client, message.chat.id, message.from_user.id):
+        return
 
-    clean_channel = channel.replace("https://t.me/", "").replace("@", "")
+    fsub_channel = await db.get_fsub(message.chat.id)
+    if not fsub_channel:
+        return
 
+    # ইউজার চ্যানেলে জয়েন আছে কিনা চেক করা
+    is_subscribed = False
     try:
-        user = await bot.get_chat_member(clean_channel, message.from_user.id)
-        if user.status == ChatMemberStatus.BANNED:
-            await message.delete()
+        member = await client.get_chat_member(f"@{fsub_channel}", message.from_user.id)
+        if member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
+            is_subscribed = True
     except UserNotParticipant:
-        # Instant User Message Deletion
+        is_subscribed = False
+    except Exception:
+        # চ্যানেল না পাওয়া গেলে বা কোনো ত্রুটি হলে
+        return
+
+    if not is_subscribed:
         try:
             await message.delete()
         except Exception:
             pass
 
-        # Global Warning Message Tracker Setup
-        if not hasattr(bot, "last_warnings"):
-            bot.last_warnings = {}
+        user_mention = message.from_user.mention
+        join_link = f"https://t.me/{fsub_channel}"
 
-        # Delete previous warning message in this group if it exists
-        if message.chat.id in bot.last_warnings:
-            try:
-                await bot.last_warnings[message.chat.id].delete()
-            except Exception:
-                pass
-
-        bot_obj = await bot.get_me()
-        channel_url = channel if channel.startswith("http") else f"https://t.me/{clean_channel}"
-        
-        markup = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📢 Join Channel", url=channel_url)],
-            [InlineKeyboardButton("➕ Add Me to Your Group", url=f"https://t.me/{bot_obj.username}?startgroup=true")]
+        buttons = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📢 চ্যানেলে জয়েন করুন", url=join_link)],
+            [InlineKeyboardButton("🔄 জয়েন করা শেষ (Try Again)", callback_data=f"check_fsub_{fsub_channel}")]
         ])
 
-        # Send new warning message & save reference
-        try:
-            warn_msg = await message.reply_text(
-                f"🚫 <b>{message.from_user.mention}</b>, you must join our official channel to send messages here!",
-                reply_markup=markup
-            )
-            bot.last_warnings[message.chat.id] = warn_msg
-        except Exception as e:
-            print(f"Error sending warning: {e}")
-            
-    except Exception as e:
-        print(f"Error: {e}")
-
-# 6. Hidden Broadcast Command for Sudos
-@Client.on_message(filters.command("broadcast") & filters.user(Config.SUDO_USERS))
-async def safe_broadcast(bot: Client, message: Message):
-    if not message.reply_to_message:
-        return await message.reply_text("⚠️ Reply to any message with `/broadcast user` or `/broadcast group`.")
-
-    target = message.command[1] if len(message.command) > 1 else "user"
-    if target not in ["user", "group"]:
-        return await message.reply_text("⚠️ **Usage:** `/broadcast user` or `/broadcast group`")
-
-    targets = await get_chats_by_type(target)
-    sent, failed = 0, 0
-    status = await message.reply_text(f"🚀 **Starting {target.capitalize()} Broadcast Process...**")
-
-    for cid in targets:
-        try:
-            await message.reply_to_message.copy(cid)
-            sent += 1
-            await asyncio.sleep(0.05)
-        except FloodWait as e:
-            await asyncio.sleep(e.value + 1)
-            await message.reply_to_message.copy(cid)
-            sent += 1
-        except (InputUserDeactivated, UserIsBlocked, ChatAdminRequired):
-            failed += 1
-        except Exception:
-            failed += 1
-
-    await status.edit_text(f"✅ **Broadcast Task Completed!**\n\n🎯 **Target:** `{target}`\n🟢 **Success:** `{sent}`\n🔴 **Failed:** `{failed}`")
-
-# 7. Live Statistics Command for Sudos / Owner
-@Client.on_message(filters.command(["stats", "status"]) & filters.user(Config.SUDO_USERS))
-async def bot_stats(bot: Client, message: Message):
-    status_msg = await message.reply_text("⚡ **Fetching Bot Statistics...**")
-    
-    try:
-        total_users = await get_chats_by_type("user")
-        total_groups = await get_chats_by_type("group")
-        
-        user_count = len(total_users) if total_users else 0
-        group_count = len(total_groups) if total_groups else 0
-        
-        stats_text = (
-            "📊 <b>Official Bot Box - Live Statistics</b>\n\n"
-            f"👤 <b>Total Users (Bot Started):</b> <code>{user_count}</code>\n"
-            f"👥 <b>Total Groups Connected:</b> <code>{group_count}</code>\n"
-            f"🌐 <b>Total Active Reach:</b> <code>{user_count + group_count}</code>\n\n"
-            "📢 <b>Powered by:</b> @official_botbox"
+        warning_msg = (
+            f"👋 <b>হে {user_mention},</b>\n\n"
+            f"গ্রুপে বার্তা পাঠাতে হলে আপনাকে অবশ্যই আমাদের অফিসিয়াল চ্যানেলে জয়েন করতে হবে।\n\n"
+            f"👇 নিচের বাটন থেকে জয়েন করে <b>'Try Again'</b> বাটনে ক্লিক করুন:"
         )
-        
-        await status_msg.edit_text(stats_text, disable_web_page_preview=True)
-    except Exception as e:
-        await status_msg.edit_text(f"❌ **Error fetching stats:** `{e}`")
 
-# 8. Dynamic Extension Pass-Through (Modular Gateway for Future Plugins)
-# This dummy listener ensures Pyrogram automatically allows external command files in plugins/ without affecting FSub priority.
-@Client.on_message(filters.group & filters.command(["ping", "extra"]), group=0)
-async def extension_gateway_pass(bot: Client, message: Message):
-    message.continue_propagation()
+        try:
+            await client.send_message(
+                chat_id=message.chat.id,
+                text=warning_msg,
+                reply_markup=buttons
+            )
+        except Exception:
+            pass
+
+
+# ------------------ TRY AGAIN CALLBACK HANDLER ------------------ #
+@Client.on_callback_query(filters.regex(r"^check_fsub_(.+)"))
+async def check_fsub_callback(client: Client, query: CallbackQuery):
+    channel = query.data.split("_")[-1]
+    user_id = query.from_user.id
+
+    try:
+        member = await client.get_chat_member(f"@{channel}", user_id)
+        if member.status in [ChatMemberStatus.MEMBER, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]:
+            await query.answer("✅ ধন্যবাদ! আপনি চ্যানেলে জয়েন করেছেন। এখন গ্রুপে মেসেজ দিতে পারবেন।", show_alert=True)
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+        else:
+            await query.answer("❌ আপনি এখনো চ্যানেলে জয়েন করেননি! অনুগ্রহ করে আগে জয়েন করুন।", show_alert=True)
+    except UserNotParticipant:
+        await query.answer("❌ আপনি এখনো চ্যানেলে জয়েন করেননি! অনুগ্রহ করে আগে জয়েন করুন।", show_alert=True)
+    except Exception:
+        await query.answer("⚠️ একটি সমস্যা হয়েছে, আবার চেষ্টা করুন।", show_alert=True)
