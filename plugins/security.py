@@ -1,168 +1,146 @@
-import asyncio
+import re
+from datetime import datetime, timedelta
 from pyrogram import Client, filters
 from pyrogram.types import Message, ChatPermissions
 from pyrogram.enums import ChatMemberStatus
-from config import Config
-from database.db import get_security_settings, update_security_settings
+from database.db import db
 
-# 1. Admin Commands to Toggle Security Features On/Off
-@Client.on_message(filters.command(["antilink", "antiforward", "antiusername"]) & filters.group)
-async def toggle_security_cmd(bot: Client, message: Message):
-    # Check Admin Permission
-    member = await bot.get_chat_member(message.chat.id, message.from_user.id)
-    if member.status not in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR] and message.from_user.id not in Config.SUDO_USERS:
-        return await message.reply_text("❌ **Access Denied:** Only Group Admins can change security settings!")
+# ইউআরএল এবং ইউজারনেম ফিল্টার রেগেক্স (Regex) Pattern
+URL_PATTERN = re.compile(r"(https?://[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,})")
+USERNAME_PATTERN = re.compile(r"@[a-zA-Z0-9_]{3,}")
 
-    if len(message.command) < 2:
-        return await message.reply_text(
-            f"⚠️ **Usage:** `/{message.command[0]} on` or `/{message.command[0]} off`"
-        )
+async def is_admin(client: Client, chat_id: int, user_id: int) -> bool:
+    """মেম্বার অ্যাডমিন বা ওনার কিনা যাচাই করার ইউটিলিটি ফাংশন"""
+    try:
+        member = await client.get_chat_member(chat_id, user_id)
+        return member.status in [ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.OWNER]
+    except Exception:
+        return False
 
-    cmd = message.command[0].lower()
-    option = message.command[1].lower()
-
-    if option not in ["on", "off"]:
-        return await message.reply_text("⚠️ Invalid Option! Use `on` or `off`.")
-
-    status = True if option == "on" else False
+# ------------------ ANTI-LINK COMMAND ------------------ #
+@Client.on_message(filters.command("antilink") & filters.group)
+async def antilink_command(client: Client, message: Message):
+    if not await is_admin(client, message.chat.id, message.from_user.id):
+        return await message.reply_text("❌ <b>শুধুমাত্র গ্রুপের অ্যাডমিনগণ এই কমান্ডটি ব্যবহার করতে পারবেন!</b>")
     
-    key_map = {
-        "antilink": ("link_protection", "Anti-Link"),
-        "antiforward": ("forward_protection", "Anti-Forward"),
-        "antiusername": ("username_protection", "Anti-Username")
-    }
-
-    setting_key, feature_name = key_map[cmd]
-    await update_security_settings(message.chat.id, setting_key, status)
+    args = message.text.split()
+    if len(args) < 2 or args[1].lower() not in ["on", "off"]:
+        return await message.reply_text("💡 <b>সঠিক ব্যবহার:</b>\n• <code>/antilink on</code> — লিঙ্ক পাঠানো ব্লক করতে\n• <code>/antilink off</code> — লিঙ্ক এলাউ করতে")
     
-    state_text = "🟢 **ENABLED**" if status else "🔴 **DISABLED**"
-    await message.reply_text(f"⚙️ **{feature_name} Protection** is now {state_text} for this group!")
+    status = True if args[1].lower() == "on" else False
+    await db.set_security_setting(message.chat.id, "antilink", status)
+    
+    state_txt = "✅ <b>চালু (ON)</b>" if status else "❌ <b>বন্ধ (OFF)</b>"
+    await message.reply_text(f"🔗 <b>অ্যান্টি-লিঙ্ক সিকিউরিটি এখন {state_txt} করা হয়েছে!</b>")
 
-# 2. View Live Security Status in Group
+# ------------------ ANTI-FORWARD COMMAND ------------------ #
+@Client.on_message(filters.command("antiforward") & filters.group)
+async def antiforward_command(client: Client, message: Message):
+    if not await is_admin(client, message.chat.id, message.from_user.id):
+        return await message.reply_text("❌ <b>শুধুমাত্র গ্রুপের অ্যাডমিনগণ এই কমান্ডটি ব্যবহার করতে পারবেন!</b>")
+    
+    args = message.text.split()
+    if len(args) < 2 or args[1].lower() not in ["on", "off"]:
+        return await message.reply_text("💡 <b>সঠিক ব্যবহার:</b>\n• <code>/antiforward on</code> — ফরওয়ার্ড মেসেজ ব্লক করতে\n• <code>/antiforward off</code> — ফরওয়ার্ড মেসেজ এলাউ করতে")
+    
+    status = True if args[1].lower() == "on" else False
+    await db.set_security_setting(message.chat.id, "antiforward", status)
+    
+    state_txt = "✅ <b>চালু (ON)</b>" if status else "❌ <b>বন্ধ (OFF)</b>"
+    await message.reply_text(f"↩️ <b>অ্যান্টি-ফরওয়ার্ড সিকিউরিটি এখন {state_txt} করা হয়েছে!</b>")
+
+# ------------------ ANTI-USERNAME COMMAND ------------------ #
+@Client.on_message(filters.command("antiusername") & filters.group)
+async def antiusername_command(client: Client, message: Message):
+    if not await is_admin(client, message.chat.id, message.from_user.id):
+        return await message.reply_text("❌ <b>শুধুমাত্র গ্রুপের অ্যাডমিনগণ এই কমান্ডটি ব্যবহার করতে পারবেন!</b>")
+    
+    args = message.text.split()
+    if len(args) < 2 or args[1].lower() not in ["on", "off"]:
+        return await message.reply_text("💡 <b>সঠিক ব্যবহার:</b>\n• <code>/antiusername on</code> — ইউজারনেম ট্যাগ ব্লক করতে\n• <code>/antiusername off</code> — ইউজারনেম এলাউ করতে")
+    
+    status = True if args[1].lower() == "on" else False
+    await db.set_security_setting(message.chat.id, "antiusername", status)
+    
+    state_txt = "✅ <b>চালু (ON)</b>" if status else "❌ <b>বন্ধ (OFF)</b>"
+    await message.reply_text(f"🏷️ <b>অ্যান্টি-ইউজারনেম সিকিউরিটি এখন {state_txt} করা হয়েছে!</b>")
+
+# ------------------ SECURITY STATUS COMMAND ------------------ #
 @Client.on_message(filters.command(["secstatus", "security"]) & filters.group)
-async def view_security_status(bot: Client, message: Message):
-    settings = await get_security_settings(message.chat.id)
+async def secstatus_command(client: Client, message: Message):
+    settings = await db.get_security_settings(message.chat.id)
     
-    l_status = "🟢 ON" if settings.get("link_protection", False) else "🔴 OFF (Default)"
-    f_status = "🟢 ON" if settings.get("forward_protection", False) else "🔴 OFF (Default)"
-    u_status = "🟢 ON" if settings.get("username_protection", False) else "🔴 OFF (Default)"
+    antilink_status = "✅ चालू" if settings.get("antilink") else "❌ বন্ধ"
+    antiforward_status = "✅ চালু" if settings.get("antiforward") else "❌ বন্ধ"
+    antiusername_status = "✅ चालू" if settings.get("antiusername") else "❌ বন্ধ"
+    
+    msg = f"""
+🛡️ <b>গ্রুপ সিকিউরিটি স্ট্যাটাস (Security Status)</b>
 
-    text = (
-        f"🛡️ <b>Group Security Settings for {message.chat.title}:</b>\n\n"
-        f"🔗 <b>Anti-Link:</b> {l_status}\n"
-        f"↩️ <b>Anti-Forward:</b> {f_status}\n"
-        f"🏷️ <b>Anti-Username (@):</b> {u_status}\n\n"
-        "💡 <i>Admins can toggle using <code>/antilink on/off</code>, <code>/antiforward on/off</code>, <code>/antiusername on/off</code></i>"
-    )
-    await message.reply_text(text, disable_web_page_preview=True)
+📊 <b>বর্তমান সক্রিয় ফিল্টারসমূহ:</b>
+• 🔗 <b>অ্যান্টি-লিঙ্ক (Anti-Link):</b> {antilink_status}
+• ↩️ <b>অ্যান্টি-ফরওয়ার্ড (Anti-Forward):</b> {antiforward_status}
+• 🏷️ <b>অ্যান্টি-ইউজারনেম (Anti-Username):</b> {antiusername_status}
 
-# 3. Main Security Listener Filter
-@Client.on_message(filters.group & ~filters.bot, group=2)
-async def security_check_handler(bot: Client, message: Message):
-    chat_id = message.chat.id
-    user_id = message.from_user.id
+💡 <i>অ্যাডমিনগণ কমান্ড ব্যবহার করে এই ফিচারগুলো পরিবর্তন করতে পারবেন।</i>
+"""
+    await message.reply_text(msg)
 
-    # Exclude Group Admins and Sudo Users
-    try:
-        member = await bot.get_chat_member(chat_id, user_id)
-        if member.status in [ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR] or user_id in Config.SUDO_USERS:
-            return
-    except Exception:
-        pass
-
-    # Fetch settings (Defaults to False/Off if not set)
-    settings = await get_security_settings(chat_id)
-    link_prot = settings.get("link_protection", False)
-    fwd_prot = settings.get("forward_protection", False)
-    user_prot = settings.get("username_protection", False)
-
-    is_violation = False
-    violation_reason = ""
-
-    # Link Check (Only if Enabled)
-    if link_prot and (message.entities or message.caption_entities):
-        entities = message.entities or message.caption_entities
-        for entity in entities:
-            if entity.type in ["url", "text_link"]:
-                is_violation = True
-                violation_reason = "Sending Links is Restricted!"
-                break
-
-    # Forward Check (Only if Enabled)
-    if not is_violation and fwd_prot and message.forward_date:
-        is_violation = True
-        violation_reason = "Forwarded Messages are Restricted!"
-
-    # Username Check (Only if Enabled)
-    if not is_violation and user_prot and message.text and "@" in message.text:
-        is_violation = True
-        violation_reason = "Telegram Usernames (@) are Restricted!"
-
-    if not is_violation:
+# ------------------ SPAM FILTER HANDLER ------------------ #
+@Client.on_message(filters.group & ~filters.service, group=1)
+async def security_filter_handler(client: Client, message: Message):
+    if not message.from_user or message.from_user.is_bot:
         return
-
-    # Delete violating message
-    try:
-        await message.delete()
-    except Exception:
-        pass
-
-    # Warning & Dynamic Mute Handler
-    if not hasattr(bot, "user_warnings"):
-        bot.user_warnings = {}
-
-    user_key = f"{chat_id}_{user_id}"
-    current_warns = bot.user_warnings.get(user_key, 0) + 1
-    bot.user_warnings[user_key] = current_warns
-
-    if not hasattr(bot, "sec_last_warnings"):
-        bot.sec_last_warnings = {}
-
-    old_warn = bot.sec_last_warnings.get(chat_id)
-    if old_warn:
+    
+    # অ্যাডমিন বা ওনারদের জন্য সিকিউরিটি নিয়ম প্রযোজ্য নয়
+    if await is_admin(client, message.chat.id, message.from_user.id):
+        return
+        
+    settings = await db.get_security_settings(message.chat.id)
+    violation_reason = None
+    
+    text = message.text or message.caption or ""
+    
+    # ১. অ্যান্টি-লিঙ্ক চেক
+    if settings.get("antilink") and URL_PATTERN.search(text):
+        violation_reason = "গ্রুপে কোনো ধরণের লিঙ্ক বা URL পোস্ট করা নিষিদ্ধ!"
+        
+    # ২. অ্যান্টি-ফরওয়ার্ড চেক
+    elif settings.get("antiforward") and message.forward_date:
+        violation_reason = "অন্য চ্যানেল বা গ্রুপ থেকে মেসেজ ফরওয়ার্ড করা নিষিদ্ধ!"
+        
+    # ৩. অ্যান্টি-ইউজারনেম চেক
+    elif settings.get("antiusername") and USERNAME_PATTERN.search(text):
+        violation_reason = "মেসেজে অন্য কারো ইউজারনেম (@username) ট্যাগ করা নিষিদ্ধ!"
+        
+    if violation_reason:
         try:
-            await old_warn.delete()
+            await message.delete()
         except Exception:
             pass
-
-    if current_warns >= 3:
-        try:
-            await bot.restrict_chat_member(
-                chat_id=chat_id,
-                user_id=user_id,
-                permissions=ChatPermissions(can_send_messages=False),
-                until_date=int(asyncio.get_event_loop().time() + 86400)
-            )
-            bot.user_warnings[user_key] = 0
             
-            action_msg = await bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    f"🚫 <b>{message.from_user.mention} has been MUTED for 24 hours!</b>\n\n"
-                    f"⚠️ <b>Reason:</b> Reached 3/3 Security Warnings.\n\n"
-                    f"📢 <b>Powered by:</b> @official_botbox"
-                ),
-                disable_web_page_preview=True
+        warn_count = await db.add_warning(message.chat.id, message.from_user.id)
+        user_mention = message.from_user.mention
+        
+        if warn_count >= 3:
+            # ৩ বার নিয়ম ভাঙলে ২৪ ঘণ্টার জন্য মিউট
+            try:
+                until_time = datetime.now() + timedelta(days=1)
+                await client.restrict_chat_member(
+                    message.chat.id,
+                    message.from_user.id,
+                    ChatPermissions(can_send_messages=False),
+                    until_date=until_time
+                )
+                await db.reset_warnings(message.chat.id, message.from_user.id)
+                await client.send_message(
+                    message.chat.id,
+                    f"🚫 {user_mention} পর পর ৩ বার নিয়ম ভাঙায় আপনাকে <b>২৪ ঘণ্টার জন্য মিউট</b> করা হলো!"
+                )
+            except Exception as e:
+                await client.send_message(message.chat.id, f"⚠️ {user_mention}-কে মিউট করতে সমস্যা হয়েছে। বটকে পর্যাপ্ত অ্যাডমিন পারমিশন দিন।")
+        else:
+            await client.send_message(
+                message.chat.id,
+                f"⚠️ {user_mention}, {violation_reason}\n\n🚨 <b>সতর্কবার্তা:</b> [{warn_count}/3] (৩টি সতর্কবার্তা পূর্ণ হলে ২৪ ঘণ্টার জন্য মিউট করা হবে)"
             )
-            bot.sec_last_warnings[chat_id] = action_msg
-            return
-        except Exception as e:
-            print(f"Error muting user: {e}")
-
-    warn_text = (
-        f"⚠️ <b>Security Alert for {message.from_user.mention}!</b>\n\n"
-        f"🛑 <b>Rule Broken:</b> {violation_reason}\n"
-        f"📊 <b>Warning Count:</b> [{current_warns}/3]\n"
-        f"💡 <i>Reaching 3/3 warnings will result in a 24-hour mute!</i>\n\n"
-        f"📢 <b>Powered by:</b> @official_botbox"
-    )
-
-    try:
-        sent_warn = await bot.send_message(
-            chat_id=chat_id,
-            text=warn_text,
-            disable_web_page_preview=True
-        )
-        bot.sec_last_warnings[chat_id] = sent_warn
-    except Exception as e:
-        print(f"Error sending warning: {e}")
