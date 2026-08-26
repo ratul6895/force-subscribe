@@ -6,32 +6,87 @@ class Config:
     BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
     MONGO_DB_URI = os.environ.get("MONGO_DB_URI", "")
     PORT = os.environ.get("PORT", "8080")
-    SUDO_USERS = [int(x) for x in os.environ.get("SUDO_USERS", "").split()]
+    SUDO_USERS = [int(x) for x in os.environ.get("SUDO_USERS", "").split()] if os.environ.get("SUDO_USERS") else []
 
 class Messages:
     START_MSG = """
-✨ **Welcome to Force Subscribe Bot!**
+✨ <b>স্বাগতম {}, Force Subscribe বোটে!</b> 👋
 
-Hello **{}** [<code>{}</code>] 👋
+🆔 <b>আপনার ইউজার আইডি:</b> <code>{}</code>
 
-I am an advanced Force Subscribe management bot. I can force users to join your target channel before chatting in your group!
+আমি একটি অত্যন্ত শক্তিশালী ও আধুনিক <b>Force Subscribe & Group Security Management Bot</b>।
 
-⚡ **Features:**
-• Instant & Automatic Message Deletion
-• Clean & Interactive UI Buttons
-• Advanced Group Subscription Control
+🎯 <b>আমার প্রধান কাজসমূহ:</b>
+• ⚡ <b>ফোর্স সাবস্ক্রাইব:</b> মেম্বারদের নির্দিষ্ট চ্যানেলে জয়েন করতে বাধ্য করা।
+• 🗑️ <b>তাৎক্ষণিক মেসেজ রিমুভ:</b> সাবস্ক্রাইব না করে মেসেজ দিলে অটো ডিলিট।
+• 🛡️ <b>গ্রুপ সিকিউরিটি:</b> স্প্যাম লিঙ্ক, ফরওয়ার্ড মেসেজ ও ইউজারনেম ফিল্টার করা।
+• 📊 <b>অটো মিউট ও ওয়ার্নিং:</b> সিকিউরিটি রুলস ভাঙলে অটোমেটিক ওয়ার্নিং ও মিউট।
+
+👇 <i>কমান্ড নেভিগেশন ও গাইড দেখতে নিচের বাটনগুলো ব্যবহার করুন:</i>
 """
 
-    HELP_MSG = """
-📖 **Bot Command Guide & Instructions**
+    # Multi-page Help Menu (সম্পূর্ণ বাংলা ফন্ট ও সব অ্যাডমিন কমান্ডসহ)
+    HELP_MSG = {
+        1: """
+📜 <b>ফোর্স সাবস্ক্রাইব সেটআপ গাইড [পৃষ্ঠা ১/৪]</b>
 
-<b>👤 User Commands:</b>
-└ <code>/start</code> - Check bot online status & main menu.
+🎯 <b>Force Subscribe (FSub) কমান্ডসমূহ:</b>
+গ্রুপে নতুন মেম্বারদের নির্দিষ্ট চ্যানেলে জয়েন করাতে নিচের কমান্ডগুলো ব্যবহার করুন (শুধুমাত্র অ্যাডমিনদের জন্য):
 
-<b>👥 Group Admin Commands:</b>
-└ <code>/fsub @YourChannel</code> - Connect channel for Force Subscribe.
-└ <code>/fsub off</code> - Disable Force Subscribe in the group.
-└ <code>/fsub</code> - Check currently configured channel.
+🔹 <code>/fsub @YourChannel</code> — আপনার গ্রুপে ফোর্স সাবস্ক্রাইব অন করতে।
+🔹 <code>/fsub https://t.me/YourChannel</code> — লিঙ্ক দিয়ে চ্যানেল সেট করতে।
+🔹 <code>/fsub off</code> — গ্রুপে ফোর্স সাবস্ক্রাইব বন্ধ করতে।
+🔹 <code>/fsub</code> — গ্রুপে বর্তমানে কোন চ্যানেল সেট আছে তা দেখতে।
 
-⚠️ *Note: Make sure to make the bot an Admin with delete permissions in your Group & Channel!*
+⚠️ <b>প্রয়োজনীয় পারমিশন (Permissions):</b>
+১. বটকে আপনার <b>গ্রুপে অ্যাডমিন</b> বানিয়ে মেসেজ ডিলিট করার পারমিশন দিতে হবে।
+২. বটকে আপনার <b>টার্গেট চ্যানেলেও অ্যাডমিন</b> হিসেবে যুক্ত রাখতে হবে।
+""",
+        2: """
+🛡️ <b>গ্রুপ সিকিউরিটি কন্ট্রোলস [পৃষ্ঠা ২/৪]</b>
+
+গ্রুপকে স্প্যাম ও প্রচারণামুক্ত রাখতে অ্যাডমিনদের জন্য সিকিউরিটি কমান্ডসমূহ:
+
+🔗 <b>অ্যান্টি-লিঙ্ক (Anti-Link):</b>
+└ <code>/antilink on</code> — গ্রুপে সব ধরণের লিঙ্ক বা URL পাঠানো নিষিদ্ধ করতে।
+└ <code>/antilink off</code> — লিঙ্ক নিষেধাজ্ঞা তুলে নিতে।
+
+↩️ <b>অ্যান্টি-ফরওয়ার্ড (Anti-Forward):</b>
+└ <code>/antiforward on</code> — অন্য চ্যানেল বা গ্রুপ থেকে মেসেজ ফরওয়ার্ড ব্লক করতে।
+└ <code>/antiforward off</code> — ফরওয়ার্ড মেসেজ এলাউ করতে।
+
+🏷️ <b>অ্যান্টি-ইউজারনেম (Anti-Username):</b>
+└ <code>/antiusername on</code> — মেসেজে <code>@username</code> এর ট্যাগ করা ব্লক করতে।
+└ <code>/antiusername off</code> — ইউজারনেম এলাউ করতে।
+
+📊 <b>সিকিউরিটি স্ট্যাটাস (Security Status):</b>
+└ <code>/secstatus</code> বা <code>/security</code> — গ্রুপের বর্তমান সিকিউরিটি ফিল্টারগুলোর অবস্থা জানতে।
+""",
+        3: """
+👤 <b>সাধারণ ইউজার কমান্ডসমূহ [পৃষ্ঠা ৩/৪]</b>
+
+বটের সাধারণ ইউজার কমান্ড নির্দেশিকা:
+
+🔹 <code>/start</code> — বটের পরিচিতি ও হোম মেনু দেখতে।
+🔹 <code>/help</code> — বটের ব্যবহারের নির্দেশিকা দেখতে।
+🔹 <code>/secstatus</code> — গ্রুপের বর্তমান সিকিউরিটি রুলসগুলো দেখতে।
+
+💡 <b>ওয়ার্নিং ও মিউট নিয়ম:</b>
+কোনো মেম্বার গ্রুপের সিকিউরিটি রুলস ভাঙলে বট তাকে ৩টি ওয়ার্নিং দেবে। ৩টি ওয়ার্নিং শেষ হলে তাকে অটোমেটিক <b>২৪ ঘণ্টার জন্য মিউট</b> করে দেবে!
+""",
+        4: """
+👑 <b>অনার / সুডো অ্যাডমিন কমান্ডসমূহ [পৃষ্ঠা ৪/৪]</b>
+
+শুধুমাত্র বটের ওনার বা সুডো ইউজারদের (Sudo Users) জন্য নির্ধারিত এক্সক্লুসিভ কমান্ড:
+
+📢 <b>ব্রডকাস্ট (Broadcast):</b>
+└ <code>/broadcast</code> (মেসেজে রিপ্লাই দিয়ে) — সব ইউজার ও গ্রুপে মেসেজ পাঠাতে।
+└ <code>/broadcast user</code> — শুধুমাত্র প্রাইভেট ইউজারদের নোটিফিকেশন পাঠাতে।
+└ <code>/broadcast group</code> — শুধুমাত্র কানেক্টেড গ্রুপগুলোতে মেসেজ পাঠাতে।
+
+📊 <b>বট স্ট্যাটাস (Bot Stats):</b>
+└ <code>/stats</code> বা <code>/status</code> — বটের মেমোরি, মোট ইউজার ও গ্রুপের সংখ্যা দেখতে।
+
+📢 <b>অফিসিয়াল চ্যানেল:</b> @official_botbox
 """
+    }
